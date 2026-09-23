@@ -1,0 +1,109 @@
+---
+# Ansible Playbook: Deploy Student Management System
+# Target: Remote Linux server (Ubuntu/Debian)
+---
+- name: Deploy Student Management Application
+  hosts: remote_servers
+  become: yes
+  vars:
+    deploy_dir: /opt/student-management
+    app_jar: student-management.jar
+    app_name: student-management
+    app_port: 8080
+    java_package: default-jre-headless
+
+  tasks:
+    - name: Ensure Java is installed
+      apt:
+        name: "{{ java_package }}"
+        state: present
+        update_cache: yes
+      register: java_install
+      until: java_install is succeeded
+      retries: 3
+
+    - name: Verify Java installation
+      command: java -version
+      register: java_version
+      ignore_errors: yes
+      changed_when: false
+
+    - name: Print Java version
+      debug:
+        msg: "{{ java_version.stderr_lines }}"
+
+    - name: Create application directory
+      file:
+        path: "{{ deploy_dir }}"
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: '0755'
+
+    - name: Stop existing application instance
+      shell: |
+        pkill -f "{{ app_jar }}" || true
+        sleep 2
+      ignore_errors: yes
+      changed_when: false
+
+    - name: Copy JAR file to remote server
+      copy:
+        src: "{{ playbook_dir }}/../target/{{ app_jar }}"
+        dest: "{{ deploy_dir }}/{{ app_jar }}"
+        owner: ubuntu
+        group: ubuntu
+        mode: '0755'
+
+    - name: Verify JAR file was copied
+      stat:
+        path: "{{ deploy_dir }}/{{ app_jar }}"
+      register: jar_stat
+
+    - name: Fail if JAR not found
+      fail:
+        msg: "JAR file not found at {{ deploy_dir }}/{{ app_jar }}"
+      when: not jar_stat.stat.exists
+
+    - name: Start the application in background
+      shell: |
+        nohup java -jar "{{ deploy_dir }}/{{ app_jar }}" > "{{ deploy_dir }}/app.log" 2>&1 &
+        echo $! > "{{ deploy_dir }}/app.pid"
+      args:
+        chdir: "{{ deploy_dir }}"
+      ignore_errors: no
+
+    - name: Wait for application to start
+      wait_for:
+        port: "{{ app_port }}"
+        host: 0.0.0.0
+        timeout: 30
+        state: started
+
+    - name: Verify application process is running
+      shell: ps aux | grep "{{ app_jar }}" | grep -v grep
+      register: process_check
+      changed_when: false
+
+    - name: Show application process
+      debug:
+        msg: "{{ process_check.stdout_lines }}"
+
+    - name: Check application log for success message
+      shell: tail -n 20 "{{ deploy_dir }}/app.log"
+      register: app_log
+      changed_when: false
+
+    - name: Show application output
+      debug:
+        msg: "{{ app_log.stdout_lines }}"
+
+    - name: Display deployment summary
+      debug:
+        msg:
+          - "========================================="
+          - "  DEPLOYMENT SUCCESSFUL!"
+          - "  Application: {{ app_name }}"
+          - "  Deployed to: {{ deploy_dir }}"
+          - "  Running on:  {{ inventory_hostname }}"
+          - "========================================="
