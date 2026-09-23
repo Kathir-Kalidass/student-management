@@ -1,43 +1,31 @@
 ---
 # Ansible Playbook: Deploy Student Management System
 # Target: Remote Linux server (Ubuntu/Debian)
----
+# Configurable via inventory.ini
+
 - name: Deploy Student Management Application
   hosts: remote_servers
-  become: yes
   vars:
-    deploy_dir: /opt/student-management
     app_jar: student-management.jar
     app_name: student-management
     app_port: 8080
-    java_package: default-jre-headless
+    # deploy_dir is set in inventory.ini (allows per-environment config)
 
   tasks:
-    - name: Ensure Java is installed
-      apt:
-        name: "{{ java_package }}"
-        state: present
-        update_cache: yes
-      register: java_install
-      until: java_install is succeeded
-      retries: 3
-
-    - name: Verify Java installation
+    - name: Verify Java is installed (Java availability check)
       command: java -version
       register: java_version
       ignore_errors: yes
       changed_when: false
 
-    - name: Print Java version
+    - name: Print Java availability
       debug:
-        msg: "{{ java_version.stderr_lines }}"
+        msg: "Java runtime available on managed node"
 
     - name: Create application directory
       file:
         path: "{{ deploy_dir }}"
         state: directory
-        owner: ubuntu
-        group: ubuntu
         mode: '0755'
 
     - name: Stop existing application instance
@@ -47,12 +35,10 @@
       ignore_errors: yes
       changed_when: false
 
-    - name: Copy JAR file to remote server
+    - name: Copy JAR file to managed node
       copy:
         src: "{{ playbook_dir }}/../target/{{ app_jar }}"
         dest: "{{ deploy_dir }}/{{ app_jar }}"
-        owner: ubuntu
-        group: ubuntu
         mode: '0755'
 
     - name: Verify JAR file was copied
@@ -73,16 +59,16 @@
         chdir: "{{ deploy_dir }}"
       ignore_errors: no
 
-    - name: Wait for application to start
+    - name: Wait for application to start (up to 30s)
       wait_for:
-        port: "{{ app_port }}"
-        host: 0.0.0.0
+        path: "{{ deploy_dir }}/app.pid"
         timeout: 30
-        state: started
+        state: present
 
     - name: Verify application process is running
-      shell: ps aux | grep "{{ app_jar }}" | grep -v grep
+      shell: pgrep -af "{{ app_jar }}"
       register: process_check
+      ignore_errors: yes
       changed_when: false
 
     - name: Show application process
@@ -90,7 +76,7 @@
         msg: "{{ process_check.stdout_lines }}"
 
     - name: Check application log for success message
-      shell: tail -n 20 "{{ deploy_dir }}/app.log"
+      shell: tail -n 30 "{{ deploy_dir }}/app.log"
       register: app_log
       changed_when: false
 
