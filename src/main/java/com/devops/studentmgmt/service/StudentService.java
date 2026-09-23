@@ -86,4 +86,15 @@ public class StudentService {
     public int count() {
         return store.size();
     }
+
+    /**
+     * Get department-wise student statistics (department name -> count).
+     * Feature added on feature/search-enhancement branch.
+     */
+    public Map<String, Long> getDepartmentStats() {
+        return store.values().stream()
+                .collect(Collectors.groupingBy(
+                        Student::getDepartment,
+                        Collectors.counting()));
+    }
 }
