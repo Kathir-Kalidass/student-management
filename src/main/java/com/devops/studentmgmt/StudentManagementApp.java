@@ -63,6 +63,12 @@ public class StudentManagementApp {
             System.out.println("  " + s);
         }
 
+        // [NEW] Department statistics
+        System.out.println("\n[STATS] Department-wise student count:");
+        for (java.util.Map.Entry<String, Long> entry : service.getDepartmentStats().entrySet()) {
+            System.out.println("  " + entry.getKey() + ": " + entry.getValue() + " student(s)");
+        }
+
         printSeparator();
         System.out.println("  Application completed successfully!");
         printSeparator();
